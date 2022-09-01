@@ -332,8 +332,23 @@ class OligoPipeline:
 
 
         # This could be used to scale the Z-scores but when you don't want any scaling then just return x itself
-        def Z_score_transform(x):
-            return np.sign(x) * np.log(abs(x) + 0.5)
+        def Z_score_transform(a, linthresh = 25, base= 2, linscale = 1.5 ):
+            """Inplace transformation."""
+            linscale_adj = (linscale / (1.0 - base ** -1))
+            log_base = np.log(base)
+            
+            with np.errstate(invalid="ignore"):
+                masked = np.abs(a) > linthresh
+           
+                
+            sign = np.sign(a[masked])
+            log = (linscale_adj +
+                   np.log(np.abs(a[masked]) / linthresh) / log_base)
+            log *= sign * linthresh
+            a[masked] = log
+            
+            a[~masked] =  a[~masked] * linscale_adj
+            return a
 
 
         data_gb = df.loc[ df['sample_ID'] == sample_ID]
@@ -343,7 +358,7 @@ class OligoPipeline:
         ax = fig.add_subplot(1,2,1)
 
         # Apply transformation on Z-scores
-        data_gb = data_gb.assign(Z_scores_scaled = data_gb['Z_scores'].apply( lambda x: Z_score_transform(x)  ) )
+        data_gb = data_gb.assign(Z_scores_scaled = data_gb['Z_scores'].apply( lambda x: Z_score_transform( np.array([x])  )[0]  ) )
 
 
         # Check if all compounds are present. If not, add compound with NaNs
@@ -404,12 +419,12 @@ class OligoPipeline:
         zs = [1,10,100,1000,10000,100000,1000000]
         ax.vlines( 0, -10**10, 10**10, color='lightgrey',zorder=-1000 )
         for z in zs:
-            ax.vlines(   Z_score_transform(z),-10**10,10**10, color='lightgrey',zorder=-1000 )
-            ax.vlines(  -Z_score_transform(z),-10**10,10**10, color='lightgrey',zorder=-1000 )
+            ax.vlines(   Z_score_transform( np.array([z]) )[0],-10**10,10**10, color='lightgrey',zorder=-1000 )
+            ax.vlines(  -Z_score_transform( np.array([z]) )[0],-10**10,10**10, color='lightgrey',zorder=-1000 )
 
-        x_ticks = [ Z_score_transform(-z) for z in zs ]
+        x_ticks = [ Z_score_transform( np.array([-z]))[0] for z in zs ]
         x_ticks.append(0)
-        x_ticks.extend(  [ Z_score_transform(z) for z in zs ] )
+        x_ticks.extend(  [ Z_score_transform( np.array([z]))[0] for z in zs ] )
         ax.set_xticks( x_ticks )
 
         x_ticks_labels = [ str(-z) for z in zs ]
@@ -418,7 +433,7 @@ class OligoPipeline:
         ax.set_xticklabels( x_ticks_labels )
 
 
-        ax.set_xlim([ Z_score_transform(-10), max(xlims) *1.1 ])
+        ax.set_xlim([ Z_score_transform( np.array([-10]) )[0], max(xlims) *1.1 ])
         ax.set_ylim(ylims)
 
 
